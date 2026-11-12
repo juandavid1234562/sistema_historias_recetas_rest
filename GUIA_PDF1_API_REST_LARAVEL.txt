@@ -1,0 +1,145 @@
+================================================================================
+GUIA ACADEMICA - PDF 1: DESARROLLO DE API REST CON LARAVEL
+IMPLEMENTACION Y CUMPLIMIENTO EN EL SISTEMA DE CONSULTORIO (HISTORIAS Y RECETAS)
+================================================================================
+
+Este documento detalla de manera minuciosa como cada uno de los lineamientos,
+estándares y buenas prácticas estipulados en la guía "Desarrollo de API REST
+con Laravel" (PDF 1) fueron aplicados en el desarrollo del backend de Historias
+Clínicas (Atenciones) y Recetas Médicas en Laravel, integradas con el servicio
+SOAP legado.
+
+--------------------------------------------------------------------------------
+1. CONFIGURACION INICIAL DEL PROYECTO Y ANDAMIAJE DE API
+--------------------------------------------------------------------------------
+* Requerimiento del PDF 1:
+  En las versiones modernas de Laravel las rutas de API no vienen habilitadas
+  por defecto para mantener el framework ligero. El primer paso es inicializar
+  el andamiaje de la API con 'php artisan install:api', lo cual publica y
+  configura el archivo de rutas 'routes/api.php' y registra el soporte para APIs.
+
+* Implementación en el proyecto:
+  - Se ejecutó el comando 'php artisan install:api'.
+  - Se habilitó y estructuró el archivo 'routes/api.php'.
+  - Todas las rutas definidas en este archivo reciben automáticamente el prefijo
+    global '/api', garantizando la convención RESTful establecida:
+    * POST /api/atenciones
+    * GET  /api/atenciones/{id}
+    * GET  /api/atenciones
+    * GET  /api/atenciones/{id}/recetas
+    * POST /api/recetas
+
+--------------------------------------------------------------------------------
+2. CONFIGURACION DE LA BASE DE DATOS Y ENTORNO (.ENV)
+--------------------------------------------------------------------------------
+* Requerimiento del PDF 1:
+  Configurar el archivo '.env' con los parámetros de conexión para la base de datos
+  (MySQL o SQLite), definiendo host, puerto, nombre de base de datos, usuario y
+  clave, garantizando la persistencia de las entidades.
+
+* Implementación en el proyecto:
+  - Archivo '.env' configurado para soportar tanto MySQL (ambiente de producción /
+    Laragon) como SQLite (ambiente ágil de testing y desarrollo local sin dependencias):
+      DB_CONNECTION=sqlite
+      # Para alternar a MySQL en Laragon:
+      # DB_CONNECTION=mysql
+      # DB_HOST=127.0.0.1
+      # DB_PORT=3306
+      # DB_DATABASE=consultorio_db
+      # DB_USERNAME=root
+      # DB_PASSWORD=
+  - Se ejecutaron las migraciones automáticas mediante 'php artisan migrate',
+    creando las tablas relacionales requeridas.
+
+--------------------------------------------------------------------------------
+3. IMPLEMENTACION DE MIGRACIONES Y MODELO ELOQUENT
+--------------------------------------------------------------------------------
+* Requerimiento del PDF 1:
+  Definir tablas mediante migraciones fluidas ('Blueprint $table') y crear los
+  modelos Eloquent estableciendo la propiedad protegida '$fillable' para evitar
+  vulnerabilidades de Asignación Masiva (Mass Assignment Protection).
+
+* Implementación en el proyecto:
+  a) Migración 'create_atenciones_clinicas_table':
+     - Archivo: database/migrations/2026_10_15_034540_create_atenciones_clinicas_table.php
+     - Columnas:
+       * $table->id(): Identificador autoincremental primario.
+       * $table->unsignedBigInteger('cita_id')->index(): ID foráneo de la cita
+         procedente del sistema SOAP.
+       * $table->text('diagnostico'): Descripción del diagnóstico médico.
+       * $table->text('observaciones')->nullable(): Notas clínicas complementarias.
+       * $table->dateTime('fecha_atencion'): Fecha y hora de la atención realizada.
+       * $table->timestamps(): created_at y updated_at automáticos.
+
+  b) Migración 'create_recetas_medicas_table':
+     - Archivo: database/migrations/2026_10_15_034541_create_recetas_medicas_table.php
+     - Columnas:
+       * $table->id(): Llave primaria.
+       * $table->foreignId('atencion_id')->constrained('atenciones_clinicas')->cascadeOnDelete():
+         Relación de integridad referencial con borrado en cascada.
+       * $table->string('medicamento'): Nombre y concentración del fármaco.
+       * $table->string('dosis'): Frecuencia y cantidad prescrita.
+       * $table->text('indicaciones'): Instrucciones médicas detalladas.
+       * $table->timestamps(): Trazabilidad temporal.
+
+  c) Modelos Eloquent con $fillable:
+     - 'App\Models\AtencionClinica':
+       protected $fillable = ['cita_id', 'diagnostico', 'observaciones', 'fecha_atencion'];
+       Relación: hasMany(RecetaMedica::class, 'atencion_id')
+     - 'App\Models\RecetaMedica':
+       protected $fillable = ['atencion_id', 'medicamento', 'dosis', 'indicaciones'];
+       Relación: belongsTo(AtencionClinica::class, 'atencion_id')
+
+--------------------------------------------------------------------------------
+4. EL CONTROLADOR, VALIDACION Y RESPUESTAS JSON ESTANDARIZADAS
+--------------------------------------------------------------------------------
+* Requerimiento del PDF 1:
+  - Validación de datos entrantes con '$request->validate([...])'.
+  - Respuestas JSON estructuradas con código de estado HTTP estándar (201 Created,
+    200 OK, 422 Unprocessable, 404 Not Found).
+  - Respuestas formateadas con claves consistentes: 'mensaje' y 'data'.
+
+* Implementación en el proyecto:
+  - 'AtencionController':
+    * Método store(Request $request):
+      Valida campos obligatorios:
+        $validatedData = $request->validate([
+            'cita_id' => 'required|integer|min:1',
+            'diagnostico' => 'required|string|min:3',
+            'observaciones' => 'nullable|string',
+            'fecha_atencion' => 'required|date',
+        ]);
+      Respuesta exitosa:
+        return response()->json([
+            'mensaje' => 'Atención clínica registrada exitosamente con validación SOAP aprobada',
+            'data' => $atencion
+        ], 201);
+    * Método show(int $id):
+      Retorna 200 OK con la atención y sus recetas, o 404 si no existe.
+    * Método index():
+      Retorna 200 OK con la colección de atenciones y el conteo total.
+    * Método recetas(int $id):
+      Retorna 200 OK con el listado de recetas de la atención clínica.
+
+  - 'RecetaController':
+    * Método store(Request $request):
+      Valida 'atencion_id', 'medicamento', 'dosis', 'indicaciones'.
+      Retorna 201 Created con 'mensaje' y 'data', o 404 si la atención no existe.
+
+--------------------------------------------------------------------------------
+5. LABORATORIO: CONSUMO DESDE POSTMAN Y HEADER CRITICO
+--------------------------------------------------------------------------------
+* Requerimiento del PDF 1:
+  - Header Crítico: Añadir 'Accept: application/json' a las peticiones HTTP.
+    Esto le indica a Laravel que somos un cliente de API y que cualquier falla
+    de validación debe responderse en JSON y no como redirección HTML.
+  - Formato del Body: Enviar payloads en 'raw' seleccionando 'JSON'.
+  - Verificación de código de respuesta HTTP 201 Created y cuerpo JSON con 'data'.
+
+* Implementación en el proyecto:
+  - Se generó el archivo 'postman_collection.json' (Colección Postman v2.1 exportable).
+  - Cada solicitud tiene configurado el header:
+      Accept: application/json
+      Content-Type: application/json
+  - Se configuraron ejemplos para todos los endpoints, incluyendo casos de éxito
+    (201 Created, 200 OK) y casos de validación / error (404 Not Found, 422 Unprocessable).

@@ -1,0 +1,197 @@
+================================================================================
+GUIA PRACTICA - PDF 2: INYECCION DE DEPENDENCIAS, PATRONES Y ARQUITECTURA LIMPIA
+IMPLEMENTACION Y CUMPLIMIENTO EN EL SISTEMA DE CONSULTORIO (HISTORIAS Y RECETAS)
+================================================================================
+
+Este documento explica cómo se aplicaron todos los principios, patrones de diseño
+y directrices de Arquitectura Limpia descritos en la "Guía Práctica de PHP" (PDF 2)
+en el backend REST desarrollado para la gestión de atenciones clínicas y recetas,
+integrado con el sistema SOAP de citas existente.
+
+--------------------------------------------------------------------------------
+1. IDEAS PREVIAS: ACOPLAMIENTO, COHESION E INVERSION DE DEPENDENCIAS
+--------------------------------------------------------------------------------
+* Acoplamiento:
+  En el sistema legado SOAP ('sistema_citas_soap'), las clases estaban altamente
+  acopladas creando directamente conexiones PDO o instanciando modelos dentro
+  de los servicios.
+  En nuestra API REST de Laravel:
+  - Los controladores NO conocen SQL, PDO ni llamadas directas a NuSOAP.
+  - Dependen únicamente de abstracciones (interfaces y servicios de aplicación).
+
+* Cohesión:
+  Cada clase tiene una única responsabilidad bien delimitada:
+  - 'AtencionController' y 'RecetaController': Solo manejan peticiones HTTP y
+    respuestas JSON.
+  - 'AtencionService' y 'RecetaService': Solo coordinan las reglas del negocio.
+  - 'EloquentAtencionRepository': Solo persiste y consulta en base de datos.
+  - 'CitaSoapAdapter': Solo se comunica con el servicio SOAP y traduce sus datos.
+
+* Inversión de Dependencias (DIP):
+  El núcleo de la lógica de negocio no depende de los detalles de bajo nivel.
+  Depende de contratos:
+  - El caso de uso 'AtencionService' depende de 'CitaServiceInterface' y
+    'AtencionRepositoryInterface'.
+  - Las clases de infraestructura ('CitaSoapAdapter' y 'EloquentAtencionRepository')
+    implementan esos contratos.
+
+--------------------------------------------------------------------------------
+2. INYECCION DE DEPENDENCIAS (DI) POR CONSTRUCTOR
+--------------------------------------------------------------------------------
+* Requerimiento del PDF 2 (Secciones 2.1 a 2.5):
+  "Las clases reciben desde afuera los objetos que necesitan para trabajar, en vez
+  de crearlos internamente con new... La inyección por constructor es la opción
+  preferida cuando una dependencia es obligatoria para funcionar".
+
+* Implementación en el proyecto:
+  a) 'AtencionController':
+     Recibe 'AtencionService' por su constructor:
+       public function __construct(
+           private readonly AtencionService $atencionService
+       ) {}
+
+  b) 'RecetaController':
+     Recibe 'RecetaService' por su constructor:
+       public function __construct(
+           private readonly RecetaService $recetaService
+       ) {}
+
+  c) 'AtencionService':
+     Recibe los contratos por constructor:
+       public function __construct(
+           private readonly AtencionRepositoryInterface $atencionRepository,
+           private readonly CitaServiceInterface $citaService
+       ) {}
+
+  d) 'RecetaService':
+     Recibe los repositorios por constructor:
+       public function __construct(
+           private readonly RecetaRepositoryInterface $recetaRepository,
+           private readonly AtencionRepositoryInterface $atencionRepository
+       ) {}
+
+* Punto de composición (PDF 2 - Sección 2.2 y 4.6):
+  El contenedor de Laravel vincula las dependencias en 'App\Providers\AppServiceProvider':
+    $this->app->bind(AtencionRepositoryInterface::class, EloquentAtencionRepository::class);
+    $this->app->bind(RecetaRepositoryInterface::class, EloquentRecetaRepository::class);
+    $this->app->bind(CitaServiceInterface::class, CitaSoapAdapter::class);
+
+--------------------------------------------------------------------------------
+3. PATRONES DE DISENO APLICADOS
+--------------------------------------------------------------------------------
+
+A) PATRON ADAPTER (PDF 2 - Sección 3.4):
+   "Adapter traduce la interfaz de un sistema externo a una interfaz que nuestra
+   aplicación entiende. Evita que el resto del sistema quede lleno de llamadas
+   específicas del proveedor."
+
+   - Problema resuelto: El sistema de citas existente es un servicio SOAP con NuSOAP,
+     cuyos métodos (ej. 'consultarCitas') retornan XML/WSDL y excepciones de bajo nivel.
+   - Contrato en Dominio: 'App\Domain\Contracts\CitaServiceInterface'
+       public function consultarCitaPorId(int $citaId): ?array;
+       public function validarCitaActiva(int $citaId): array;
+   - Implementación: 'App\Infrastructure\Adapters\Soap\CitaSoapAdapter'
+     Se comunica mediante 'SoapClient' con el servidor SOAP, busca la cita por su ID,
+     valida si está en estado 'Programada' y traduce la estructura externa a un
+     arreglo limpio. Si el servicio SOAP no responde en local, cuenta con un fallback
+     de contingencia controlado para testing.
+   - Beneficio: Si en el futuro el sistema de citas cambia de SOAP a REST o microservicios,
+     solo se crea un nuevo Adapter sin alterar ni una sola línea de 'AtencionService' ni
+     de los controladores.
+
+B) PATRON REPOSITORY (PDF 2 - Sección 3.6):
+   "Repository proporciona una abstracción para acceder y persistir objetos del dominio,
+   sin que la lógica de negocio conozca SQL, PDO o MongoDB."
+
+   - Contratos:
+     * 'AtencionRepositoryInterface'
+     * 'RecetaRepositoryInterface'
+   - Implementaciones:
+     * 'EloquentAtencionRepository'
+     * 'EloquentRecetaRepository'
+   - Beneficio: La lógica de negocio no escribe consultas SQL directas ni se ata a
+     un ORM específico. Para pruebas unitarias o cambio de motor de persistencia, basta
+     con sustituir el repositorio.
+
+C) PATRON OBSERVER (PDF 2 - Sección 3.5):
+   "Observer permite que varios objetos sean notificados cuando ocurre un evento,
+   sin acoplar todas las acciones dentro del servicio principal."
+
+   - Evento: 'App\Application\Events\AtencionRegistradaEvent'
+   - Oyente (Observer): 'App\Application\Listeners\RegistrarAuditoriaAtencionListener'
+   - Beneficio: Cuando se registra una atención clínica, se dispara el evento 'event(new AtencionRegistradaEvent(...))'.
+     El servicio de atención no se encarga de escribir en logs de auditoría ni de enviar
+     correos; el observador reacciona de forma totalmente desacoplada.
+
+--------------------------------------------------------------------------------
+4. ARQUITECTURA LIMPIA (4 CAPAS / ZONAS)
+--------------------------------------------------------------------------------
+Siguiendo la Sección 4 del PDF 2, el código se organizó en cuatro zonas con
+regla de dependencia hacia adentro (lo externo conoce lo interno, lo interno
+no conoce detalles de infraestructura):
+
+1. Dominio ('app/Domain/'):
+   - 'Contracts/': Interfaces de persistencia y servicios externos.
+     * CitaServiceInterface.php
+     * AtencionRepositoryInterface.php
+     * RecetaRepositoryInterface.php
+   - 'Exceptions/': Excepciones de negocio independientes de HTTP.
+     * CitaInvalidaException.php
+     * AtencionNoEncontradaException.php
+
+2. Aplicación ('app/Application/'):
+   - 'Services/': Casos de uso que orquestan las reglas del negocio.
+     * AtencionService.php (Valida cita en SOAP y registra atención).
+     * RecetaService.php (Crea recetas asociadas verificando existencia).
+   - 'Events/': Eventos de dominio (AtencionRegistradaEvent.php).
+   - 'Listeners/': Reacciones desacopladas (RegistrarAuditoriaAtencionListener.php).
+
+3. Infraestructura ('app/Infrastructure/'):
+   - 'Adapters/Soap/CitaSoapAdapter.php': Cliente SOAP para comunicarse con el
+     servicio legado.
+   - 'Repositories/EloquentAtencionRepository.php': Persistencia con Eloquent.
+   - 'Repositories/EloquentRecetaRepository.php': Persistencia con Eloquent.
+
+4. Adaptadores de Entrada / Entrega ('app/Http/Controllers/Api/'):
+   - 'AtencionController.php': Recibe HTTP POST/GET, valida y formatea JSON.
+   - 'RecetaController.php': Recibe HTTP POST, valida y formatea JSON.
+   - 'routes/api.php': Enrutador web.
+
+--------------------------------------------------------------------------------
+5. ACTIVIDAD CORTA DE APLICACION (PDF 2 - SECCION 8)
+--------------------------------------------------------------------------------
+Cumplimiento de los 6 pasos prácticos solicitados en la página 18 de la guía:
+
+1. Identificación de responsabilidades:
+   En un controlador tradicional se mezclaba la validación HTTP, el consumo del
+   servicio SOAP, la inserción en base de datos, el registro de auditoría y el
+   formateo de la respuesta.
+2. Separación mediante Repository:
+   Se crearon 'AtencionRepositoryInterface' y 'RecetaRepositoryInterface'.
+3. Inyección del Repository:
+   Inyectado por constructor en 'AtencionService' y 'RecetaService'.
+4. Encapsulación con Adapter:
+   El servicio SOAP de citas fue encapsulado en 'CitaSoapAdapter'.
+5. Aplicación del patrón Observer:
+   Se desacopló la auditoría mediante 'AtencionRegistradaEvent'.
+6. Explicación en 5 líneas de qué cambio sería más fácil y por qué:
+   "Si el consultorio decide reemplazar el servicio SOAP de citas por una nueva
+   API REST en la nube, el cambio solo requerirá crear un 'CitaRestAdapter' que
+   implemente 'CitaServiceInterface' y registrarlo en el ServiceProvider. Ni los
+   controladores ni la lógica del caso de uso 'AtencionService' sufrirán ninguna
+   modificación, garantizando máxima mantenibilidad y bajo acoplamiento."
+
+--------------------------------------------------------------------------------
+6. CHECKLIST DE REVISION DE CODIGO (PDF 2 - SECCION 7)
+--------------------------------------------------------------------------------
+[x] ¿La clase recibe dependencias por constructor en vez de 'new'?
+    -> SÍ. AtencionService, RecetaService y los Controladores usan Constructor Injection.
+[x] ¿El proveedor SOAP externo está encapsulado con Adapter?
+    -> SÍ. CitaSoapAdapter aísla por completo el protocolo NuSOAP/WSDL.
+[x] ¿La persistencia está separada mediante Repositorios?
+    -> SÍ. EloquentAtencionRepository y EloquentRecetaRepository.
+[x] ¿Los controladores tienen SQL o llamadas SOAP?
+    -> NO. Los controladores solo extraen datos de la petición y delegan a los servicios.
+[x] ¿Se pueden realizar pruebas con dependencias falsas?
+    -> SÍ. Los 11 tests automatizados en PHPUnit demuestran la prueba integral del sistema.
+================================================================================

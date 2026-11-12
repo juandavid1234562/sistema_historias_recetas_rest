@@ -1,0 +1,493 @@
+{
+	"info": {
+		"_postman_id": "c1f7a4e2-8921-4f12-9c44-3d92258fa71e",
+		"name": "API REST - Historias Clínicas y Recetas (Laravel + SOAP)",
+		"description": "Colección completa de pruebas para la API REST en Laravel desarrollada para el consultorio médico, integrando validación de citas activas mediante el servicio SOAP legado (Corte 2 y 3). Cumple con los requerimientos de la Guía Académica de API REST (PDF 1) y la Guía Práctica de Inyección de Dependencias, Patrones y Arquitectura Limpia (PDF 2).",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "1. Atenciones Clínicas",
+			"item": [
+				{
+					"name": "1.1 Registrar Atención - Cita SOAP Activa (201 Created)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text",
+								"description": "Header crítico indicado en PDF 1 para recibir respuesta en formato JSON"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"cita_id\": 1,\n    \"diagnostico\": \"Faringitis aguda estreptocócica con odinofagia\",\n    \"observaciones\": \"Reposo en casa por 48 horas e hidratación constante\",\n    \"fecha_atencion\": \"2026-10-15 08:30:00\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/atenciones",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"atenciones"
+							]
+						},
+						"description": "Consume el servicio SOAP para validar que la cita_id=1 existe y está 'Programada'. Al ser válida, registra la atención y retorna HTTP 201 Created."
+					},
+					"response": []
+				},
+				{
+					"name": "1.2 Registrar Atención - Cita SOAP Inexistente (404 Not Found)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"cita_id\": 9999,\n    \"diagnostico\": \"Chequeo rutinario\",\n    \"observaciones\": \"Sin observaciones\",\n    \"fecha_atencion\": \"2026-10-15 09:00:00\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/atenciones",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"atenciones"
+							]
+						},
+						"description": "La cita con ID 9999 no existe en el sistema SOAP. La API REST deniega el registro retornando código 404 con mensaje explicativo."
+					},
+					"response": []
+				},
+				{
+					"name": "1.3 Registrar Atención - Cita SOAP Inactiva / Cancelada (422 Unprocessable)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"cita_id\": 3,\n    \"diagnostico\": \"Dolor articular en rodilla izquierda\",\n    \"observaciones\": \"Cita cancelada previamente\",\n    \"fecha_atencion\": \"2026-10-15 10:00:00\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/atenciones",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"atenciones"
+							]
+						},
+						"description": "La cita con ID 3 existe en SOAP pero se encuentra en estado 'Cancelada'. La API REST deniega el registro retornando código 422."
+					},
+					"response": []
+				},
+				{
+					"name": "1.4 Registrar Atención - Error de Validación de Campos (422 Unprocessable)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"diagnostico\": \"\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/atenciones",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"atenciones"
+							]
+						},
+						"description": "Demuestra la validación de Form Requests de Laravel (PDF 1) retornando errores JSON por campos faltantes obligatorios."
+					},
+					"response": []
+				},
+				{
+					"name": "1.5 Consultar Detalle de Atención (200 OK)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/atenciones/1",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"atenciones",
+								"1"
+							]
+						},
+						"description": "Retorna el detalle completo de la atención médica clínica con el arreglo de sus recetas médicas asociadas."
+					},
+					"response": []
+				},
+				{
+					"name": "1.6 Listar Todas las Atenciones (200 OK)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/atenciones",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"atenciones"
+							]
+						},
+						"description": "Lista todas las atenciones clínicas registradas en el sistema con sus relaciones."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "2. Recetas Médicas",
+			"item": [
+				{
+					"name": "2.1 Crear Receta Médica Asociada (201 Created)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"atencion_id\": 1,\n    \"medicamento\": \"Amoxicilina + Ácido Clavulánico 500/125 mg\",\n    \"dosis\": \"1 tableta cada 8 horas\",\n    \"indicaciones\": \"Tomar con las comidas por 7 días calendario. No suspender antes de tiempo.\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/recetas",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"recetas"
+							]
+						},
+						"description": "Crea y asocia una nueva receta médica a una atención clínica existente."
+					},
+					"response": []
+				},
+				{
+					"name": "2.2 Crear Segunda Receta Asociada (201 Created)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"atencion_id\": 1,\n    \"medicamento\": \"Ibuprofeno 400 mg\",\n    \"dosis\": \"1 tableta cada 8 horas\",\n    \"indicaciones\": \"Tomar solo en caso de fiebre o dolor intenso por un máximo de 3 días.\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/recetas",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"recetas"
+							]
+						},
+						"description": "Asocia un segundo medicamento a la misma atención clínica."
+					},
+					"response": []
+				},
+				{
+					"name": "2.3 Crear Receta - Atención Inexistente (404 Not Found)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"atencion_id\": 9999,\n    \"medicamento\": \"Loratadina 10 mg\",\n    \"dosis\": \"1 tableta cada 24 horas\",\n    \"indicaciones\": \"Tomar en la noche\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/recetas",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"recetas"
+							]
+						},
+						"description": "Deniega la creación de la receta si la atención clínica indicada en atencion_id no existe."
+					},
+					"response": []
+				},
+				{
+					"name": "2.4 Consultar Recetas de una Atención (200 OK)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/atenciones/1/recetas",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"atenciones",
+								"1",
+								"recetas"
+							]
+						},
+						"description": "Endpoint GET /api/atenciones/{id}/recetas para consultar la lista de recetas asociadas a la atención #1."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "3. Integración REST-SOAP con Clave Secreta (Punto 6)",
+			"item": [
+				{
+					"name": "3.1 Generar Token desde REST con Clave Secreta (200 OK)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"usuario\": \"doctor_especialista@consultorio.com\",\n    \"minutos\": 30,\n    \"rol\": \"Medico\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/soap/token/generar",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"soap",
+								"token",
+								"generar"
+							]
+						},
+						"description": "Punto 6: Genera un token HMAC-SHA256 desde la aplicación REST utilizando la clave secreta compartida con SOAP."
+					},
+					"response": []
+				},
+				{
+					"name": "3.2 Validar Token en SOAP - Token Válido (200 OK)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"token\": \"eyJ1c3VhcmlvIjoiZG9jdG9yX2VzcGVjaWFsaXN0YUBjb25zdWx0b3Jpby5jb20iLCJpYXQiOjE3OTMyNDcxODMsImV4cCI6MTc5MzI4ODk4Mywib3JpZ2VuIjoiQVBJLVJFU1QtTGFyYXZlbCIsImp0aSI6ImNlMTg5MDM5ZWI3OTAzOWVkNjVkZGYxNGQwYjc1OGRiIiwicm9sIjoiTWVkaWNvIn0.2f896b0ee62fe21262d989f6b9be2c270d47ee35d3369a19c5c29ec49b1ca4c4\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/soap/token/validar",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"soap",
+								"token",
+								"validar"
+							]
+						},
+						"description": "Punto 6: Envía el token a la aplicación SOAP para que lo valide mediante la clave secreta. Como resultado, SOAP indica si el token es válido o no."
+					},
+					"response": []
+				},
+				{
+					"name": "3.3 Validar Token en SOAP - Token Alterado (401 Unauthorized)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"token\": \"eyJ1c3VhcmlvIjoic3VwbGFudGFkb3Jfbm9fYXV0b3JpemFkbyIsImV4cCI6MTgwMDAwMDAwMH0.2f896b0ee62fe21262d989f6b9be2c270d47ee35d3369a19c5c29ec49b1ca4c4\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/soap/token/validar",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"soap",
+								"token",
+								"validar"
+							]
+						},
+						"description": "Demuestra que la aplicación SOAP detecta la alteración del contenido porque la firma criptográfica calculada con la clave secreta no coincide."
+					},
+					"response": []
+				},
+				{
+					"name": "3.4 Consumir Citas SOAP con Token en Header (200 OK)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"profesional_id\": 0,\n    \"fecha\": \"\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/soap/citas/consultar",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"soap",
+								"citas",
+								"consultar"
+							]
+						},
+						"description": "Punto 6: Consume la operación consultarCitas del servidor SOAP inyectando el token generado con la clave secreta en el <soap:Header> (<AuthHeader><token>...</token></AuthHeader>)."
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://127.0.0.1:8000",
+			"type": "string"
+		}
+	]
+}
